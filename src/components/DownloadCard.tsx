@@ -8,6 +8,7 @@ interface DownloadCardProps {
 
 export default function DownloadCard({ task }: DownloadCardProps) {
   const { pauseDownload, resumeDownload, cancelDownload, removeDownload } = useDownloadStore()
+  const waitingForNetwork = task.segments.some((s) => s.networkState === 'WAITING_NETWORK')
 
   const formatBytes = (bytes: bigint) => {
     const num = Number(bytes)
@@ -30,7 +31,7 @@ export default function DownloadCard({ task }: DownloadCardProps) {
 
   const getStatusColor = () => {
     switch (task.status) {
-      case 'downloading': return 'text-cyber-primary'
+      case 'downloading': return waitingForNetwork ? 'text-cyber-warn' : 'text-cyber-primary'
       case 'completed': return 'text-cyber-secondary'
       case 'paused': return 'text-cyber-warn'
       case 'assembling': return 'text-cyber-accent'
@@ -42,7 +43,7 @@ export default function DownloadCard({ task }: DownloadCardProps) {
 
   const getStatusText = () => {
     switch (task.status) {
-      case 'downloading': return 'DESCARGANDO'
+      case 'downloading': return waitingForNetwork ? 'ESPERANDO RED' : 'DESCARGANDO'
       case 'completed': return 'COMPLETADO'
       case 'paused': return 'PAUSADO'
       case 'assembling': return 'ENSAMBLANDO'

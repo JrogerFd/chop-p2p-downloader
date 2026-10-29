@@ -8,8 +8,61 @@ const app = express()
 const server = http.createServer(app)
 const wss = new WebSocketServer({ server })
 
-app.use(cors())
+const configuredOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean)
+
+const defaultOrigins = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001'
+]
+
+const allowedOrigins = new Set([...defaultOrigins, ...configuredOrigins])
+const allowAllOrigins = configuredOrigins.includes('*')
+
+app.set('trust proxy', 1)
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true)
+    }
+    const normalizedOrigin = origin.replace(/\/+$/, '')
+    const isRenderFrontend = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(normalizedOrigin)
+    if (allowAllOrigins || allowedOrigins.has(normalizedOrigin) || isRenderFrontend) {
+      return callback(null, true)
+    }
+    return callback(null, false)
+  },
+  credentials: true,
+  methods: ['GET', 'HEAD', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Range', 'Accept', 'Origin'],
+  exposedHeaders: [
+    'Content-Length',
+    'Content-Range',
+    'Accept-Ranges',
+    'Content-Disposition',
+    'Content-Type'
+  ],
+  optionsSuccessStatus: 204,
+  maxAge: 86400
+}))
 app.use(express.json())
+
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'online',
+    service: 'chop-p2p-downloader',
+    timestamp: Date.now()
+  })
+})
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() })
+})
 
 // Ensure all API responses are JSON
 app.use('/api', (req, res, next) => {
@@ -203,10 +256,20 @@ app.get('/api/download', async (req, res) => {
       headers['Range'] = range
     }
 
-    const upstream = await fetch(url, {
-      method: 'GET',
+    const isHeadRequest = req.method === 'HEAD'
+    let upstream = await fetch(url, {
+      method: isHeadRequest ? 'HEAD' : 'GET',
       headers
     })
+
+    if (isHeadRequest && (upstream.status === 405 || upstream.status === 501)) {
+      try {
+        upstream.body?.cancel()
+      } catch {
+        // ignore
+      }
+      upstream = await fetch(url, { method: 'GET', headers })
+    }
 
     res.status(upstream.status)
 
@@ -217,9 +280,23 @@ app.get('/api/download', async (req, res) => {
     const contentRange = upstream.headers.get('content-range')
     if (contentRange) res.setHeader('Content-Range', contentRange)
     const acceptRanges = upstream.headers.get('accept-ranges')
-    if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges)
+    if (acceptRanges) {
+      res.setHeader('Accept-Ranges', acceptRanges)
+    } else if (upstream.status === 206) {
+      res.setHeader('Accept-Ranges', 'bytes')
+    }
     const contentDisposition = upstream.headers.get('content-disposition')
     if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition)
+
+    if (isHeadRequest) {
+      try {
+        upstream.body?.cancel()
+      } catch {
+        // ignore
+      }
+      res.end()
+      return
+    }
 
     if (upstream.body) {
       const reader = upstream.body.getReader()
@@ -286,7 +363,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   })
 })
 
-const PORT = 3001
-server.listen(PORT, () => {
+const PORT = Number(process.env.PORT) || 3001
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Chop P2P Signaling Server running on port ${PORT}`)
 })

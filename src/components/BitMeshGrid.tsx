@@ -6,11 +6,22 @@ interface BitMeshGridProps {
 }
 
 export default function BitMeshGrid({ segments }: BitMeshGridProps) {
+  const isWaitingNetwork = (segment: Segment) => segment.networkState === 'WAITING_NETWORK'
+
   const getSegmentColor = (segment: Segment) => {
     if (segment.downloaded) return 'bg-cyber-primary'
+    if (isWaitingNetwork(segment)) return 'bg-cyber-warn animate-pulse'
     if (segment.inProgress) return 'bg-cyber-secondary animate-pulse'
     if (segment.error) return 'bg-cyber-error'
     return 'bg-cyber-border'
+  }
+
+  const getSegmentStateLabel = (segment: Segment) => {
+    if (segment.downloaded) return 'COMPLETO'
+    if (isWaitingNetwork(segment)) return 'ESPERANDO RED'
+    if (segment.inProgress) return 'DESCARGANDO'
+    if (segment.error) return 'ERROR'
+    return 'PENDIENTE'
   }
 
   return (
@@ -28,6 +39,10 @@ export default function BitMeshGrid({ segments }: BitMeshGridProps) {
             <span className="text-gray-500">DESCARGANDO</span>
           </div>
           <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-cyber-warn rounded-sm animate-pulse" />
+            <span className="text-gray-500">ESPERANDO RED</span>
+          </div>
+          <div className="flex items-center gap-1">
             <div className="w-2 h-2 bg-cyber-border rounded-sm" />
             <span className="text-gray-500">PENDIENTE</span>
           </div>
@@ -39,18 +54,19 @@ export default function BitMeshGrid({ segments }: BitMeshGridProps) {
           {segments.map((segment) => (
             <div
               key={segment.index}
-              className={`h-3 rounded-sm transition-all duration-200 ${getSegmentColor(segment)} ${segment.downloaded || segment.inProgress ? 'opacity-100' : 'opacity-60'}`}
-              title={`Segmento #${segment.index} | bytes ${segment.start.toString()}-${segment.end.toString()} | ${(segment.progress * 100).toFixed(0)}%`}
+              className={`h-3 rounded-sm transition-all duration-200 ${getSegmentColor(segment)} ${segment.downloaded || segment.inProgress || isWaitingNetwork(segment) ? 'opacity-100' : 'opacity-60'}`}
+              title={`Segmento #${segment.index} | ${getSegmentStateLabel(segment)} | bytes ${segment.start.toString()}-${segment.end.toString()} | ${(segment.progress * 100).toFixed(0)}%`}
             />
           ))}
         </div>
-        <div className="mt-3 flex justify-between text-xs text-gray-500">
+        <div className="mt-3 flex justify-between gap-3 text-xs text-gray-500 flex-wrap">
           <span className="flex items-center gap-1">
             <Zap className="w-3 h-3 text-cyber-primary" />
             TOTAL: {segments.length} SEGMENTOS
           </span>
           <span>COMPLETADOS: {segments.filter(s => s.downloaded).length}/{segments.length}</span>
-          <span>EN PROCESO: {segments.filter(s => s.inProgress).length}</span>
+          <span>EN PROCESO: {segments.filter(s => s.inProgress && !isWaitingNetwork(s)).length}</span>
+          <span className="text-cyber-warn">EN ESPERA: {segments.filter(s => isWaitingNetwork(s)).length}</span>
         </div>
       </div>
     </div>

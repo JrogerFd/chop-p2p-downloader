@@ -1,3 +1,5 @@
+export type SegmentNetworkState = 'WAITING_NETWORK'
+
 export interface Segment {
   index: number
   start: bigint
@@ -10,6 +12,7 @@ export interface Segment {
   bytesDownloaded: number
   retryCount: number
   error?: string
+  networkState?: SegmentNetworkState
 }
 
 export interface DownloadTask {

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Plus, Link, AlertTriangle } from 'lucide-react'
 import { useDownloadStore } from '../store/useDownloadStore'
 import { v4 as uuidv4 } from 'uuid'
-import { httpSegmentEngine } from '../engine/HttpSegmentEngine'
+import { httpSegmentEngine, fetchWithRetry, isTimeoutOrNetworkError } from '../engine/HttpSegmentEngine'
+import { apiUrl } from '../config'
 
 export default function AddDownload() {
   const [input, setInput] = useState('')
@@ -28,9 +29,10 @@ export default function AddDownload() {
       let contentLength = 0
       let filename = ''
       let fileContentType: string | undefined
+      let verificationFailed = false
 
       try {
-        const response = await fetch(`/api/verify?url=${encodeURIComponent(url)}`)
+        const response = await fetchWithRetry(apiUrl(`/api/verify?url=${encodeURIComponent(url)}`))
         const contentTypeHeader = response.headers.get('content-type') || ''
         if (contentTypeHeader.includes('text/html')) {
           await response.text()
@@ -44,13 +46,23 @@ export default function AddDownload() {
           fileContentType = data.contentType || undefined
         } else {
           const data = await response.json().catch(() => ({}))
-          throw new Error(data?.error || 'No se pudo verificar si el servidor soporta descargas por rangos')
+          if (response.status >= 500) {
+            verificationFailed = true
+          } else {
+            throw new Error(data?.error || 'No se pudo verificar si el servidor soporta descargas por rangos')
+          }
         }
-      } catch (err: any) {
-        throw err
+      } catch (err) {
+        if (isTimeoutOrNetworkError(err)) {
+          verificationFailed = true
+        } else {
+          throw err
+        }
       }
 
-      if (!acceptsRanges) {
+      if (verificationFailed) {
+        setWarning('No se pudo verificar el soporte de rangos (timeout o error de red). Se intentará la descarga por defecto.')
+      } else if (!acceptsRanges) {
         setWarning('Soporte de rangos no detectado: iniciando descarga en hilo único (fallback)')
       }
 
